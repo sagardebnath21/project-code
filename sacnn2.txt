@@ -1,0 +1,234 @@
+import tensorflow as tf
+
+# Print version to confirm
+print("TensorFlow version:", tf.__version__)
+import tensorflow as tf
+print("Num GPUs Available:", len(tf.config.list_physical_devices('GPU')))
+import os
+import numpy as np
+import seaborn as sns
+import matplotlib.pyplot as plt
+import tensorflow as tf
+from tensorflow.keras.applications import MobileNetV2, VGG16, InceptionV3, ResNet50
+from tensorflow.keras.layers import Input, Dense, GlobalAveragePooling2D, Concatenate, Dropout
+from tensorflow.keras.models import Model
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
+from tensorflow.keras.optimizers import Adam
+
+from sklearn.metrics import accuracy_score,roc_auc_score, confusion_matrix, classification_report
+from tensorflow.keras.preprocessing import image
+import cv2
+from tensorflow.keras.applications import MobileNetV2, VGG16, InceptionV3, ResNet50
+
+# Dictionary of model classes
+models = {
+    "MobileNetV2": MobileNetV2,
+    "VGG16": VGG16,
+    "InceptionV3": InceptionV3,
+    "ResNet50": ResNet50
+}
+
+# Get and print default input sizes for each model
+for name, model_class in models.items():
+    default_size = model_class().input_shape[1:3]
+    print(f"{name} default input size: {default_size}")
+# Define input sizes per model
+model_input_shapes = {
+    "MobileNetV2" : (224, 224),
+    "VGG16"       : (224, 224),
+    "InceptionV3" : (299, 299),
+    "ResNet50"    : (224, 224),
+}
+
+BATCH_SIZE = 32
+train_datagen = ImageDataGenerator(
+    rescale=1./255,
+    validation_split=0.2
+)
+# Store generators in dictionaries
+train_generators = {}
+val_generators = {}
+
+# Loop over each model and create generators
+for model_name, image_size in model_input_shapes.items():
+    print(f"\nCreating generators for {model_name} with input size {image_size}")
+
+    train_gen = train_datagen.flow_from_directory(
+        DATASET_DIR,
+        target_size=image_size,
+        batch_size=BATCH_SIZE,
+        class_mode='categorical',
+        subset='training',
+        shuffle=True
+    )
+
+    val_gen = train_datagen.flow_from_directory(
+        DATASET_DIR,
+        target_size=image_size,
+        batch_size=BATCH_SIZE,
+        class_mode='categorical',
+        subset='validation',
+        shuffle=False
+    )
+
+    train_generators[model_name] = train_gen
+    val_generators[model_name] = val_gen
+# Configuration
+BATCH_SIZE = 32
+IMAGE_SIZES = {
+    "MobileNetV2": (224, 224),
+    "VGG16": (224, 224),
+    "InceptionV3": (299, 299),
+    "ResNet50": (224, 224),
+}
+
+BASE_DIR = "/content/drive/MyDrive/cnn"  # Dataset should have subfolders per class
+train_dir = BASE_DIR  # Point to the base directory containing class subfolders
+
+# Initialize ImageDataGenerator with validation split
+data_gen = ImageDataGenerator(
+    rescale=1./255,
+    validation_split=0.2  # 20% for validation
+)
+
+train_generators = {}
+val_generators = {}
+model_input_shapes = {}
+
+for model_name, input_size in IMAGE_SIZES.items():
+    model_input_shapes[model_name] = input_size
+
+    # Training generator (80%)
+    train_generators[model_name] = data_gen.flow_from_directory(
+        train_dir,
+        target_size=input_size,
+        batch_size=BATCH_SIZE,
+        class_mode='categorical',
+        shuffle=True,
+        subset='training'
+    )
+
+    # Validation generator (20%)
+    val_generators[model_name] = data_gen.flow_from_directory(
+        train_dir,
+        target_size=input_size,
+        batch_size=BATCH_SIZE,
+        class_mode='categorical',
+        shuffle=False,
+        subset='validation'
+    )
+
+
+
+# Now get NUM_CLASSES from any generator
+NUM_CLASSES = next(iter(train_generators.values())).num_classes
+
+best_val_acc = 0  # Initialize to store best validation accuracy overall
+
+for model_name in model_classes:
+    print(f"\nTraining {model_name}...\n{'-'*40}")
+
+    input_shape = model_input_shapes[model_name]
+    base_model = model_classes[model_name](
+        include_top=False,
+        weights='imagenet',
+        input_shape=(*input_shape, 3)
+    )
+    base_model.trainable = False  # Freeze pretrained base
+
+    # Add classification head
+    x = base_model.output
+    x = GlobalAveragePooling2D()(x)
+    x = Dropout(0.5)(x)
+    x = Dense(4, activation='relu')(x)
+    x = Dropout(0.3)(x)
+    output = Dense(NUM_CLASSES, activation='softmax')(x)
+    model = Model(inputs=base_model.input, outputs=output)
+
+    model.compile(
+        optimizer=Adam(learning_rate=LEARNING_RATE),
+        loss='categorical_crossentropy',
+        metrics=['accuracy']
+    )
+
+    steps_per_epoch = train_generators[model_name].samples // BATCH_SIZE
+    validation_steps = val_generators[model_name].samples // BATCH_SIZE
+
+    history = model.fit(
+        train_generators[model_name],
+        validation_data=val_generators[model_name],
+        steps_per_epoch=steps_per_epoch,
+        validation_steps=validation_steps,
+        epochs=EPOCHS,
+        verbose=1
+    )
+
+    print(f"✅ Finished training {model_name}")
+
+    current_val_acc = max(history.history['val_accuracy'])
+    if current_val_acc > best_val_acc:
+        best_val_acc = current_val_acc
+
+print(f"\n✅ Best Validation Accuracy Across All Models: {best_val_acc:.4f}")
+
+best_val_acc_dict = {}
+
+print(" Best Validation Accuracy Per Model:")
+for model_name, history in history_dict.items():
+    best_acc = max(history.history['val_accuracy'])
+    best_val_acc_dict[model_name] = best_acc
+    print(f"{model_name}: {best_acc:.4f}")
+# Plot as bar chart
+plt.figure(figsize=(8, 5))
+plt.bar(best_val_acc_dict.keys(), best_val_acc_dict.values(), color='skyblue')
+plt.title("Best Validation Accuracy Per Model")
+plt.ylabel("Validation Accuracy")
+plt.ylim(0, 1)  # Accuracy range from 0 to 1
+plt.grid(axis='y')
+
+# Annotate bars with accuracy values
+for i, (name, acc) in enumerate(best_val_acc_dict.items()):
+    plt.text(i, acc + 0.01, f"{acc:.2f}", ha='center')
+
+plt.tight_layout()
+plt.show()
+plt.figure(figsize=(10, 6))
+for name, history in history_dict.items():
+    plt.plot(history.history['val_accuracy'], label=name)
+plt.title('Validation Accuracy vs Epoch')
+plt.xlabel('Epoch')
+plt.ylabel('Validation Accuracy')
+plt.legend()
+plt.grid(True)
+plt.show()
+plt.figure(figsize=(10, 6))
+for name, history in history_dict.items():
+    plt.plot(history.history['loss'], label=name)
+plt.title('Training Loss vs Epoch')
+plt.xlabel('Epoch')
+plt.ylabel('Loss')
+plt.legend()
+plt.grid(True)
+plt.show()
+from sklearn.metrics import classification_report
+import numpy as np
+
+# 1. Get true labels and predicted labels for the validation set
+val_generator = val_generators[model_name]  # Replace model_name as needed
+
+# Predict class probabilities
+val_steps = val_generator.samples // val_generator.batch_size
+y_pred_prob = model.predict(val_generator, steps=val_steps, verbose=1)
+
+# Convert probabilities to class indices
+y_pred = np.argmax(y_pred_prob, axis=1)
+
+# True class indices
+y_true = val_generator.classes[:len(y_pred)]  # truncate to length of predictions
+
+# 2. Get class labels from generator
+class_labels = list(val_generator.class_indices.keys())
+
+# 3. Print classification report
+report = classification_report(y_true, y_pred, target_names=class_labels)
+print(report)
